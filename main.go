@@ -23,16 +23,12 @@ func main() {
 		threshold := flag.String("threshold", "-200", "set judge threshold")
 		flag.Parse()
 		beego.AppConfig.Set("remoteAddress", *remoteAddress)
-		//beego.AppConfig.Set("chainApi", )
-		fmt.Println("remoteAddress:", *remoteAddress)
 		beego.AppConfig.Set("FileDir", *dataDir)
 		beego.AppConfig.Set("threshold", *threshold)
 	}
 
-	//localAddress := flag.String("local", "127.0.0.1:26800", "c2 host http listen address")
 	go func() {
-		//Register(*remoteAddress)
-		//http.Handle("/video", )
+
 		http.Handle("/", http.FileServer(http.Dir("./temp")))
 		http.ListenAndServe(":8123", nil)
 	}()
