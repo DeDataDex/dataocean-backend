@@ -3,12 +3,23 @@ package controllers
 import (
 	"cosmosVideoApi/models"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/cosmos/cosmos-sdk/client"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	beego "github.com/stonemeta/beego/server/web"
+	//tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	xauthsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
+	"github.com/everFinance/goar"
+	"github.com/everFinance/goar/types"
 	"github.com/everFinance/goar/utils"
-	"github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/golang-module/dongle"
+	"github.com/syndtr/goleveldb/leveldb/errors"
+
 	"io"
 	"io/ioutil"
 	"log"
@@ -17,19 +28,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"github.com/everFinance/goar"
-	"github.com/everFinance/goar/types"
 	"time"
 )
 
-
-
-
 type voucherInfo struct {
 	address string
-	level string
-	sn string
-	size string
+	level   string
+	sn      string
+	size    string
 }
 
 // Operations about Users
@@ -52,33 +58,32 @@ func (v *VideoController) Post() {
 	//if err:=json.Unmarshal(u.Ctx.Input.RequestBody, user); err != nil {
 	//	fmt.Println("err:", err)
 	//}
-	log.Println("video:",video)
+	log.Println("video:", video)
 	vid := models.AddVideo(video)
 	log.Println("vid:", vid)
 	//将video信息转发给应用链
 	//var msg string
 	if succ, err := sendVideoInfoToChain(video); err != nil {
-		v.Data["json"] = map[string]interface{}{"success": succ, "data":nil, "error":err}
+		v.Data["json"] = map[string]interface{}{"success": succ, "data": nil, "error": err}
 
 	} else {
-		v.Data["json"] = map[string]interface{}{"success": succ, "data":nil, "error":nil}
+		v.Data["json"] = map[string]interface{}{"success": succ, "data": nil, "error": nil}
 	}
 
 	v.ServeJSON()
 }
 
-
-func (v *VideoController)GetVideo() {
+func (v *VideoController) GetVideo() {
 	rr := v.Ctx.Request
 	rw := v.Ctx.ResponseWriter
-	var address,videoId,expire string
+	var address, videoId, expire string
 	//获取请求参数
 	msg := v.GetString(":message")
 	filename := v.GetString(":videoID")
 	//对message进行Unescape
 	msgUnescape, errUnescape := url.PathUnescape(msg)
 	if errUnescape != nil {
-		log.Println("errUnescape:",errUnescape)
+		log.Println("errUnescape:", errUnescape)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
 	}
 	//解密message并获取参数
@@ -86,16 +91,16 @@ func (v *VideoController)GetVideo() {
 	address, videoId, expire = getDecryptMsg(decryptMsg)
 	//校验参数是否满足条件
 	expire1, errParseInt := strconv.ParseInt(expire, 10, 64)
-	if  errParseInt != nil {
+	if errParseInt != nil {
 		log.Println("errParseInt:", errParseInt)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
 		return
 	}
-	ext := strings.Split(filename,".")
-	prefix := strings.Join(ext[:len(ext)-1],"")
+	ext := strings.Split(filename, ".")
+	prefix := strings.Join(ext[:len(ext)-1], "")
 	if videoId != prefix {
 		log.Println("videoId与密文中的videoId不同")
-		sendErrorResponse(rw,models.ErrorVideoIdError)
+		sendErrorResponse(rw, models.ErrorVideoIdError)
 		return
 	}
 	if time.Now().Unix() > expire1 {
@@ -105,16 +110,16 @@ func (v *VideoController)GetVideo() {
 	}
 	dir, _ := beego.AppConfig.String("FileDir")
 	thre, _ := beego.AppConfig.String("threshold")
-	threshold, errThreshold := strconv.ParseInt(thre,10,64)
+	threshold, errThreshold := strconv.ParseInt(thre, 10, 64)
 	if errThreshold != nil {
 		log.Println("errThreshold:", errThreshold)
-		sendErrorResponse(rw,models.ErrorInternalFaults)
+		sendErrorResponse(rw, models.ErrorInternalFaults)
 		return
 	}
 	fmt.Println("threshold:", threshold)
 	fmt.Println("dir:", dir)
 
-	vl :=  dir + "/" + prefix + "/" + filename
+	vl := dir + "/" + prefix + "/" + filename
 	fmt.Println("vl:", vl)
 	video, err := os.Open(vl)
 	if err == errors.ErrNotFound {
@@ -123,30 +128,30 @@ func (v *VideoController)GetVideo() {
 		return
 	}
 	defer video.Close()
-	fileInfo, err :=  video.Stat()
+	fileInfo, err := video.Stat()
 	if err != nil {
 		log.Println("Get FileInfo", err.Error())
-		sendErrorResponse(rw,models.ErrorFileError)
+		sendErrorResponse(rw, models.ErrorFileError)
 		return
 	}
 	//beego.BConfig.WebConfig.ViewsPath
 	var size int64
 
 	filesize := fileInfo.Size()
-	prexfile:=strings.Join(ext[:len(ext)-1], "")
+	prexfile := strings.Join(ext[:len(ext)-1], "")
 	fmt.Println("prefile:", prexfile)
 	key := []byte(address + prexfile)
 	fmt.Println("key:", key)
 	value, errGet := db.Get(key, nil)
 	if errGet != errors.ErrNotFound {
-		size, errSize := strconv.ParseInt(string(value),10,64)
+		size, errSize := strconv.ParseInt(string(value), 10, 64)
 		if errSize != nil {
-			log.Println("parseInt:",errSize)
-			sendErrorResponse(rw,models.ErrorInternalFaults)
+			log.Println("parseInt:", errSize)
+			sendErrorResponse(rw, models.ErrorInternalFaults)
 			return
 		}
 		if ext[len(ext)-1] != "m3u8" {
-			if size - filesize > threshold*1024*1024  {
+			if size-filesize > threshold*1024*1024 {
 
 				sendErrorResponse(rw, models.ErrorInsufficientBalance)
 				return
@@ -155,19 +160,19 @@ func (v *VideoController)GetVideo() {
 		}
 	} else {
 		size = 0
-		if err := db.Put(key, []byte(strconv.FormatInt(size,10)),nil); err != nil {
-			sendErrorResponse(rw,models.ErrorDBError)
+		if err := db.Put(key, []byte(strconv.FormatInt(size, 10)), nil); err != nil {
+			sendErrorResponse(rw, models.ErrorDBError)
 		}
 	}
 
-	var start,end int64
+	var start, end int64
 
 	if rangeByte := rr.Header.Get("Range"); rangeByte != "" {
 		fmt.Println("rangeByte:", rangeByte)
-		if strings.Contains(rangeByte,"bytes=") && strings.Contains(rangeByte,"-") {
-			fmt.Sscanf(rangeByte,"bytes=%d-%d", &start, &end)
-			fmt.Println("start:",start)
-			fmt.Println("end:",end)
+		if strings.Contains(rangeByte, "bytes=") && strings.Contains(rangeByte, "-") {
+			fmt.Sscanf(rangeByte, "bytes=%d-%d", &start, &end)
+			fmt.Println("start:", start)
+			fmt.Println("end:", end)
 			if end == 0 {
 				end = fileInfo.Size() - 1
 			}
@@ -184,13 +189,13 @@ func (v *VideoController)GetVideo() {
 			sendErrorResponse(rw, models.ErrorBadRequestError)
 		}
 	} else {
-		rw.Header().Add("Content-Length", strconv.FormatInt(fileInfo.Size(),10))
+		rw.Header().Add("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
 		start = 0
-		end = fileInfo.Size()-1
+		end = fileInfo.Size() - 1
 		fmt.Println("start:", start)
 		fmt.Println("end:", end)
 	}
-	_, err = video.Seek(start,0)
+	_, err = video.Seek(start, 0)
 	if err != nil {
 		log.Println("file locate seek", err.Error())
 		sendErrorResponse(rw, models.ErrorInternalFaults)
@@ -236,22 +241,18 @@ func (v *VideoController)GetVideo() {
 		}
 	}
 	size = size - filesize
-	if errPut := db.Put(key, []byte(strconv.FormatInt(size,10)), nil); errPut != nil {
+	if errPut := db.Put(key, []byte(strconv.FormatInt(size, 10)), nil); errPut != nil {
 		log.Println("errPut:", errPut)
-		sendErrorResponse(rw,models.ErrorDBError)
+		sendErrorResponse(rw, models.ErrorDBError)
 	}
-	//v.Data["json"] = map[string]interface{}{"success": true, "msg": "文件传输成功"}
-	//v.ServeJSON()
 }
-
-
 
 // @Title GetExtranetIp
 // @Description get video by filename
 // @Success 200 {object} models.Video
 // @Failure 403  is empty
 // @router /ip [get]
-func (v *VideoController)GetIP() {
+func (v *VideoController) GetIP() {
 	responseClient, errClient := http.Get("http://myexternalip.com/raw") // 获取外网 IP
 	if errClient != nil {
 		fmt.Printf("获取外网 IP 失败，请检查网络\n")
@@ -259,11 +260,9 @@ func (v *VideoController)GetIP() {
 	}
 	// 程序在使用完 response 后必须关闭 response 的主体。
 	defer responseClient.Body.Close()
-
 	body, _ := ioutil.ReadAll(responseClient.Body)
 	clientIP := fmt.Sprintf("%s", string(body))
 	fmt.Println(clientIP)
-
 }
 
 // @Title SendVoucher
@@ -275,26 +274,37 @@ func (v *VideoController)GetIP() {
 // @Success 200
 // @Failure 403  is empty
 // @router /sendVoucher [post]
-func (v *VideoController)SendVoucher() {
+func (v *VideoController) SendVoucher() {
+	fmt.Println("进入到逻辑")
 	rw := v.Ctx.ResponseWriter
-	var voucher models.VoucherInfo
-	fmt.Println("voucher:", voucher)
+	var voucher *models.VoucherInfo
+	//fmt.Println("voucher:", voucher)
+
 	//获取签名参数
-	if errParseForm := v.ParseForm(&voucher); errParseForm != nil {
-		log.Println("errUnmarshal:", errParseForm)
+	paySign := v.GetString("paySign")
+	fmt.Println("paySign:", paySign)
+	sign, errDecode := DecodeMsg(paySign)
+
+	if errDecode != nil {
+		log.Println("errDecode:", errDecode)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
-		return
 	}
+
+	success, errValidate := validateSign(ctx, sign)
+	if errValidate != nil || !success {
+		log.Println("errValidate:", errValidate)
+		sendErrorResponse(rw, models.ErrorValidateError)
+	}
+
+	msgS := sign.GetMsgs()[0]
+	voucher = parseMsg(msgS.String())
+
 	//对签名参数进行解码
-	newSize, errAtoi := strconv.Atoi(voucher.Size)
+	newSize := voucher.ReceivedSizeMB
 	fmt.Println("newSize:", newSize)
-	if errAtoi != nil {
-		log.Println("errAtoi:", errAtoi)
-		sendErrorResponse(rw, models.ErrorInternalFaults)
-	}
-	var sizes int
-	key := []byte(voucher.Account+voucher.Sn)
-	data, errGet := db.Get(key,nil)
+	var sizes uint64
+	key := []byte(voucher.Creator + strconv.FormatUint(voucher.VidoId, 64))
+	data, errGet := db.Get(key, nil)
 	fmt.Println("data:", data)
 	if errGet == errors.ErrNotFound {
 		sizes = 0
@@ -313,21 +323,18 @@ func (v *VideoController)SendVoucher() {
 		log.Println("errMarshal:", errMarshal)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
 	}
-	if errPut :=db.Put(key,value,nil); errPut != nil {
+	if errPut := db.Put(key, value, nil); errPut != nil {
 		log.Println("errPut:", errPut)
 		sendErrorResponse(rw, models.ErrorDBError)
 	}
-	var msg models.SettleInfo
-	msg.UserAddress = voucher.Account
-	msg.TimeStamp = time.Now().Format("2006/01/02 15:04:05")
-	msg.Charge = voucher.Size
+	var msg models.VoucherSign
+
 	if err := mQueue.Publish("sendTx", msg); err != nil {
 		log.Println("mq publish error:", err.Error())
 		sendErrorResponse(rw, models.ErrorInternalFaults)
 	}
 
-	v.Data["json"] = map[string]interface{}{"result": true, "msg": "签名校验成功" }
-	v.ServeJSON()
+	sendNormalResponse(rw, "签名校验成功", 201)
 
 }
 
@@ -337,7 +344,7 @@ func (v *VideoController)SendVoucher() {
 // @Success 200
 // @Failure 403  is empty
 // @router /settle [post]
-func (v *VideoController)Settlement() {
+func (v *VideoController) Settlement() {
 	var settle *models.SettleInfo
 	videoID := v.GetString("videoID")
 	fmt.Println("videoID:", videoID)
@@ -355,7 +362,7 @@ func (v *VideoController)Settlement() {
 // @Success 200
 // @Failure 403  is empty
 // @router /getVideoFromAr [get]
-func (v *VideoController)GetVideoFromAr() {
+func (v *VideoController) GetVideoFromAr() {
 	txId := v.GetString("txUrl")
 	fmt.Println("txID:", txId)
 	arNode := "http://localhost:1984"
@@ -378,7 +385,7 @@ func (v *VideoController)GetVideoFromAr() {
 // @Success 200
 // @Failure 403  is empty
 // @router /sendVideoToAr [post]
-func (v *VideoController)SendVideoToAr() {
+func (v *VideoController) SendVideoToAr() {
 	arNode := "http://localhost:1984"
 	w, err := goar.NewWalletFromPath("./conf/account2.json", arNode)
 	//fmt.Println("owner:",w.Signer.Owner())
@@ -394,7 +401,7 @@ func (v *VideoController)SendVideoToAr() {
 		return
 	}
 	tags := []types.Tag{{Name: "Content-Type", Value: "video/mp4"}, {Name: "goar", Value: "testdata"}}
-	tx, errSendData := assemblyDataTx(data,w,tags)
+	tx, errSendData := assemblyDataTx(data, w, tags)
 	if errSendData != nil {
 		log.Println("send data speedup:", errSendData)
 		return
@@ -443,49 +450,207 @@ func assemblyDataTx(bigData []byte, wallet *goar.Wallet, tags []types.Tag) (*typ
 	return tx, nil
 }
 
-
 func sendVideoInfoToChain(video *models.Video) (string, error) {
 	for {
-		videoinfo,_ :=json.Marshal(video)
+		videoinfo, _ := json.Marshal(video)
 		remoteAddress, _ := beego.AppConfig.String("remoteAddress")
 		sendChainApi, _ := beego.AppConfig.String("chainApi")
 
 		req, err := http.NewRequest("POST", fmt.Sprintf(sendChainApi, remoteAddress), strings.NewReader(string(videoinfo)))
 		if err != nil {
 			fmt.Print("Register: http.NewRequest ", err.Error())
-			return "false",err
+			return "false", err
 		}
-
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			log.Println(err)
-			return "false",err
+			return "false", err
 		}
 		//var respBody string
 		respBody, _ := ioutil.ReadAll(resp.Body)
-		log.Println("同步video信息成功:"+string(respBody))
+		log.Println("同步video信息成功:" + string(respBody))
 		//fmt.Println(respBody)
 
 		resp.Body.Close()
 
-		return "true",nil
+		return "true", nil
 
 	}
 }
 
-func getDecryptMsg(src string) (address string,videoId string,expire string) {
+func DecodeMsg(msg string) (xauthsigning.Tx, error) {
+	msgbytes, errhexDecode := hex.DecodeString(msg)
+	if errhexDecode != nil {
+		log.Println("errBytes:", errhexDecode)
+		return nil, errhexDecode
+	}
+	tx, errTxDecode := appCos.TxConfig().TxDecoder()(msgbytes)
+
+	if errTxDecode != nil {
+		log.Println("errTxDecode:", errTxDecode)
+		return nil, errTxDecode
+	}
+
+	//json,errJsonEncode :=appCos.TxConfig().TxJSONEncoder()(tx)
+	//if errJsonEncode != nil {
+	//	log.Println("errJsonEncode:", errJsonEncode)
+	//	return nil, errJsonEncode
+	//}
+	return tx.(xauthsigning.Tx), nil
+}
+
+func validateSign(ctx sdk.Context, sigTx xauthsigning.Tx) (bool, error) {
+	var success bool
+	//ctx := appCos.NewContext(true, tmproto.Header{Height: appCos.LastBlockHeight()})
+
+	txConfig := appCos.TxConfig()
+	handler := txConfig.SignModeHandler()
+	signers := sigTx.GetSigners()
+	sigs, errGetSign := sigTx.GetSignaturesV2()
+	if errGetSign != nil {
+		log.Println("errGetSign:", errGetSign)
+		return false, errGetSign
+	}
+	if len(sigs) != len(signers) {
+		success = false
+	}
+
+	for i, sig := range sigs {
+		var (
+			pubKey  = sig.PubKey
+			sigAddr = sdk.AccAddress(pubKey.Address())
+		)
+		if i >= len(signers) || !sigAddr.Equals(signers[i]) {
+			success = false
+		}
+		//accnum := appCos.AccountKeeper.GetAccount(ctx,sigAddr).GetAccountNumber()
+		//accseq := appCos.AccountKeeper.GetAccount(ctx,sigAddr).GetSequence()
+		signingData := xauthsigning.SignerData{
+			Address: sigAddr.String(),
+			ChainID: ctx.ChainID(),
+			//AccountNumber: accnum,
+			//Sequence:      accseq,
+			PubKey: pubKey,
+		}
+		err := xauthsigning.VerifySignature(ctx, pubKey, signingData, sig.Data, handler, sigTx)
+		if err != nil {
+			return false, err
+		}
+	}
+	return success, nil
+
+}
+
+func EncodeSignMsg(tx xauthsigning.Tx) (string, error) {
+	txconfig := appCos.TxConfig()
+	txBytes, err := txconfig.TxEncoder()(tx)
+	if err != nil {
+		return "", err
+	}
+	txBytesBase64 := base64.StdEncoding.EncodeToString(txBytes)
+	return txBytesBase64, nil
+}
+
+func SignMsg(ctx sdk.Context, Msg *models.VoucherSign, priv cryptotypes.PrivKey) (xauthsigning.Tx, error) {
+	msg := NewMsgSubmitPaySign(Msg.Creator, Msg.Sign)
+	txConfig := appCos.TxConfig()
+	txBuilder := appCos.TxConfig().NewTxBuilder()
+	addr, errAcc := sdk.AccAddressFromBech32(msg.Creator)
+	if errAcc != nil {
+		log.Println("errAcc:", errAcc)
+		return nil, errAcc
+	}
+	pubkey, errPubkey := appCos.AccountKeeper.GetPubKey(ctx, addr)
+	if errPubkey != nil {
+		log.Println("errPubkey:", pubkey)
+		return nil, errPubkey
+	}
+	errSetMsg := txBuilder.SetMsgs(msg)
+	if errSetMsg != nil {
+		log.Println("errSetMsg:", errSetMsg)
+		return nil, errSetMsg
+	}
+	var sigsV2 []signing.SignatureV2
+	signerData := xauthsigning.SignerData{
+		Address: sdk.AccAddress(pubkey.Address()).String(),
+		ChainID: "test-chain-1",
+	}
+	sigV2, err := SignWithPrivKey(
+		txConfig.SignModeHandler().DefaultMode(), signerData,
+		txBuilder, priv, txConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	sigsV2 = append(sigsV2, sigV2)
+	return txBuilder.GetTx(), nil
+
+}
+func getMsgInfo(ctx sdk.Context, tx xauthsigning.Tx) []*models.VoucherInfo {
+	msgs := tx.GetMsgs()
+	var vouchers []*models.VoucherInfo
+	for i := 0; i < len(msgs); i++ {
+		tempVoucher := parseMsg(msgs[i].String())
+		vouchers = append(vouchers, tempVoucher)
+	}
+	return vouchers
+}
+
+func parseMsg(src string) *models.VoucherInfo {
+	var voucherInfo *models.VoucherInfo
+	strs := strings.Split(src, " ")
+	creator := strings.Split(strs[0], ":")[1]
+	videoid := strings.Split(strs[1], ":")[1]
+	level := strings.Split(strs[2], ":")[1]
+	sn := strings.Split(strs[3], ":")[1]
+	receiveMB := strings.Split(strs[4], ":")[1]
+	time := strings.Split(strs[5], ":")[1]
+	voucherInfo.Sn, _ = strconv.ParseUint(sn, 10, 64)
+	voucherInfo.Level, _ = strconv.ParseUint(level, 10, 64)
+	voucherInfo.VidoId, _ = strconv.ParseUint(videoid, 10, 64)
+	voucherInfo.ReceivedSizeMB, _ = strconv.ParseUint(receiveMB, 10, 64)
+	voucherInfo.Timestamp, _ = strconv.ParseUint(time, 10, 64)
+	voucherInfo.Creator = creator
+
+	return voucherInfo
+}
+
+func getDecryptMsg(src string) (address string, videoId string, expire string) {
 	strs := strings.Split(src, ",")
-	address = strings.Split(strs[0],"=")[1]
+	address = strings.Split(strs[0], "=")[1]
 	videoId = strings.Split(strs[1], "=")[1]
 	expire = strings.Split(strs[2], "=")[1]
 	return
 }
 
+func SignWithPrivKey(
+	signMode signing.SignMode, signerData xauthsigning.SignerData,
+	txBuilder client.TxBuilder, priv cryptotypes.PrivKey, txConfig client.TxConfig) (signing.SignatureV2, error) {
+	var sigV2 signing.SignatureV2
 
+	// Generate the bytes to be signed.
+	signBytes, err := txConfig.SignModeHandler().GetSignBytes(signMode, signerData, txBuilder.GetTx())
+	if err != nil {
+		return sigV2, err
+	}
 
+	// Sign those bytes
+	signature, err := priv.Sign(signBytes)
+	if err != nil {
+		return sigV2, err
+	}
 
+	// Construct the SignatureV2 struct
+	sigData := signing.SingleSignatureData{
+		SignMode:  signMode,
+		Signature: signature,
+	}
 
+	sigV2 = signing.SignatureV2{
+		PubKey: priv.PubKey(),
+		Data:   &sigData,
+	}
 
-
-
+	return sigV2, nil
+}

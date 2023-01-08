@@ -21,17 +21,46 @@ type Video struct {
 	//DisplayCtime string		`json:"display_ctime"`
 }
 
-type VoucherInfo struct {
-	Account string  `json:"account"`
-	Level string	`json:"level"`
-	Sn string		`json:"sn"`
-	Size string		`json:"size"`
-	Paytime string	`json:"paytime"`
 
+type VoucherInfo struct {
+	Type string 	`json:"@type"`
+	Creator string  `json:"creator"`
+	VidoId uint64	`json:"videoId"`
+	Level uint64		`json:"sn"`
+	Sn uint64		`json:"size"`
+	ReceivedSizeMB uint64	`json:"receivedSizeMB"`
+	Timestamp uint64`json:"paytime"`
 }
 type VoucherSign struct {
-	Sign string `json:"sign"`
+	Creator string `json:"creator" protobuf:"bytes,1,opt,name=creator,json=creator,proto3"`
+	Sign string `json:"paySign" protobuf:"bytes,2,opt,name=paySign,json=paySign,proto3"`
 }
+
+type SignBody struct {
+	Messages Messages `json:"message"`
+	Memo interface{}	`json:"memo"`
+	Timeoutheight uint64 `json:"timeout_height"`
+	Extensionoptions []interface{} `json:"extension_options"`
+	NonCriticalExtensionOptions []interface{} `json:"non_critical_extension_options"`
+}
+type AuthInfo struct {
+
+}
+
+type Publickey struct {
+	Type string `json:"@type"`
+	Key string `json:"key"`
+}
+
+type ModeInfo struct {
+	Single string `json:"single"`
+}
+
+type Messages struct {
+	MessageNums []VoucherInfo
+}
+
+
 
 type Err struct {
 	Error string `json:"error"`
@@ -70,6 +99,8 @@ var (
 	ErrorBadRequestError = ErrResponse{HttpSC: 400, Error: Err{Error: "Bad request error", ErrorCode: "007"}}
 	ErrorVideoIdError = ErrResponse{HttpSC: 400, Error: Err{Error: "请求参数中的videoID与密文中的不一致", ErrorCode: "008"}}
 	ErrorExpireError = ErrResponse{HttpSC: 400, Error: Err{Error: "请求链接已过期", ErrorCode: "009"}}
+	ErrorValidateError = ErrResponse{HttpSC: 400, Error: Err{Error: "签名验证失败", ErrorCode: "010"}}
+
 )
 
 func AddVideo(video *Video) string {
