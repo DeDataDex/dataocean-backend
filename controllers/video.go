@@ -74,6 +74,7 @@ func (v *VideoController) Post() {
 }
 
 func (v *VideoController) GetVideo() {
+
 	rr := v.Ctx.Request
 	rw := v.Ctx.ResponseWriter
 	var address, videoId, expire string
@@ -86,23 +87,39 @@ func (v *VideoController) GetVideo() {
 		log.Println("errUnescape:", errUnescape)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
 	}
+	fmt.Println("msg:", msg)
+	fmt.Println("mgunescape:", msgUnescape)
 	//解密message并获取参数
+	//解密message并获取参数
+	aeskeying, _ := beego.AppConfig.String("aesKey")
+	fmt.Println("key:", aeskeying)
+	cipher = dongle.NewCipher()
+	cipher.SetMode(dongle.ECB)
+	cipher.SetPadding(dongle.PKCS7)
+	cipher.SetKey(aeskeying)
 	decryptMsg := dongle.Decrypt.FromBase64String(msgUnescape).ByAes(cipher).ToString()
+	fmt.Println("decryptmsg:", decryptMsg)
 	address, videoId, expire = getDecryptMsg(decryptMsg)
 	//校验参数是否满足条件
 	expire1, errParseInt := strconv.ParseInt(expire, 10, 64)
 	if errParseInt != nil {
 		log.Println("errParseInt:", errParseInt)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
-		return
 	}
 	ext := strings.Split(filename, ".")
 	prefix := strings.Join(ext[:len(ext)-1], "")
+
+	if ext[len(ext)-1] != "m3u8" {
+		temp := strings.Split(prefix, "-")
+		prefix = strings.Join(temp[:len(temp)-1], "")
+	}
+
 	if videoId != prefix {
 		log.Println("videoId与密文中的videoId不同")
 		sendErrorResponse(rw, models.ErrorVideoIdError)
-		return
+
 	}
+	fmt.Println("expire1:", expire1)
 	if time.Now().Unix() > expire1 {
 		log.Println("链接已过期")
 		sendErrorResponse(rw, models.ErrorExpireError)
@@ -123,7 +140,7 @@ func (v *VideoController) GetVideo() {
 	fmt.Println("vl:", vl)
 	video, err := os.Open(vl)
 	if err == errors.ErrNotFound {
-		log.Println("该服务器没有此视频文件")
+		log.Println("没有找到视频")
 		sendErrorResponse(rw, models.ErrorFileError)
 		return
 	}
@@ -151,7 +168,8 @@ func (v *VideoController) GetVideo() {
 			return
 		}
 		if ext[len(ext)-1] != "m3u8" {
-			if size-filesize > threshold*1024*1024 {
+
+			if filesize-size > threshold*1024*1024 {
 
 				sendErrorResponse(rw, models.ErrorInsufficientBalance)
 				return
@@ -275,16 +293,15 @@ func (v *VideoController) GetIP() {
 // @Failure 403  is empty
 // @router /sendVoucher [post]
 func (v *VideoController) SendVoucher() {
-	fmt.Println("进入到逻辑")
+
 	rw := v.Ctx.ResponseWriter
-	var voucher *models.VoucherInfo
-	//fmt.Println("voucher:", voucher)
+
+	var voucher models.VoucherInfo
 
 	//获取签名参数
 	paySign := v.GetString("paySign")
 	fmt.Println("paySign:", paySign)
 	sign, errDecode := DecodeMsg(paySign)
-
 	if errDecode != nil {
 		log.Println("errDecode:", errDecode)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
@@ -297,18 +314,18 @@ func (v *VideoController) SendVoucher() {
 	}
 
 	msgS := sign.GetMsgs()[0]
-	voucher = parseMsg(msgS.String())
+
+	fmt.Println("msgs:", msgS)
 
 	//对签名参数进行解码
+	voucher = parseMsg(msgS.String())
 	newSize := voucher.ReceivedSizeMB
-	fmt.Println("newSize:", newSize)
 	var sizes uint64
-	key := []byte(voucher.Creator + strconv.FormatUint(voucher.VidoId, 64))
+	key := []byte(voucher.Creator + strconv.FormatUint(voucher.VidoId, 10))
 	data, errGet := db.Get(key, nil)
-	fmt.Println("data:", data)
+
 	if errGet == errors.ErrNotFound {
 		sizes = 0
-		fmt.Println("sizes:", sizes)
 	} else {
 		if errUnmarshal := json.Unmarshal(data, &sizes); errUnmarshal != nil {
 			log.Println("errUnmarshal:", errUnmarshal)
@@ -501,7 +518,9 @@ func DecodeMsg(msg string) (xauthsigning.Tx, error) {
 }
 
 func validateSign(ctx sdk.Context, sigTx xauthsigning.Tx) (bool, error) {
-	var success bool
+
+	var success bool = true
+
 	//ctx := appCos.NewContext(true, tmproto.Header{Height: appCos.LastBlockHeight()})
 
 	txConfig := appCos.TxConfig()
@@ -524,15 +543,17 @@ func validateSign(ctx sdk.Context, sigTx xauthsigning.Tx) (bool, error) {
 		if i >= len(signers) || !sigAddr.Equals(signers[i]) {
 			success = false
 		}
-		//accnum := appCos.AccountKeeper.GetAccount(ctx,sigAddr).GetAccountNumber()
-		//accseq := appCos.AccountKeeper.GetAccount(ctx,sigAddr).GetSequence()
+
+		//accnum := appCos.AccountKeeper.GetAccount(ctx, sigAddr).GetAccountNumber()
+		//accseq := appCos.AccountKeeper.GetAccount(ctx, sigAddr).GetSequence()
 		signingData := xauthsigning.SignerData{
-			Address: sigAddr.String(),
-			ChainID: ctx.ChainID(),
-			//AccountNumber: accnum,
-			//Sequence:      accseq,
-			PubKey: pubKey,
+			Address:       sigAddr.String(),
+			ChainID:       "test-chain-1",
+			AccountNumber: 0,
+			Sequence:      0,
+			PubKey:        pubKey,
 		}
+		//pubKey.VerifySignature(signingData)
 		err := xauthsigning.VerifySignature(ctx, pubKey, signingData, sig.Data, handler, sigTx)
 		if err != nil {
 			return false, err
@@ -587,9 +608,10 @@ func SignMsg(ctx sdk.Context, Msg *models.VoucherSign, priv cryptotypes.PrivKey)
 	return txBuilder.GetTx(), nil
 
 }
-func getMsgInfo(ctx sdk.Context, tx xauthsigning.Tx) []*models.VoucherInfo {
+
+func getMsgInfo(ctx sdk.Context, tx xauthsigning.Tx) []models.VoucherInfo {
 	msgs := tx.GetMsgs()
-	var vouchers []*models.VoucherInfo
+	var vouchers []models.VoucherInfo
 	for i := 0; i < len(msgs); i++ {
 		tempVoucher := parseMsg(msgs[i].String())
 		vouchers = append(vouchers, tempVoucher)
@@ -597,8 +619,9 @@ func getMsgInfo(ctx sdk.Context, tx xauthsigning.Tx) []*models.VoucherInfo {
 	return vouchers
 }
 
-func parseMsg(src string) *models.VoucherInfo {
-	var voucherInfo *models.VoucherInfo
+func parseMsg(src string) models.VoucherInfo {
+	var voucherInfo models.VoucherInfo
+
 	strs := strings.Split(src, " ")
 	creator := strings.Split(strs[0], ":")[1]
 	videoid := strings.Split(strs[1], ":")[1]

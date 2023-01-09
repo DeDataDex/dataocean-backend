@@ -61,14 +61,10 @@ var ctx sdk.Context
 func init() {
 	var err error
 	cosmosDb := dbm.NewMemDB()
+
 	logger := logging.NewTMLogger(logging.NewSyncWriter(os.Stdout))
 	appCos = simapp.NewSimApp(logger, cosmosDb, nil, true, simtestutil.NewAppOptionsWithFlagHome(simapp.DefaultNodeHome))
 	ctx = appCos.NewContext(true, tmproto.Header{Height: appCos.LastBlockHeight()})
-	key, _ := beego.AppConfig.String("aesKey")
-	cipher = dongle.NewCipher()
-	cipher.SetMode(dongle.ECB)
-	cipher.SetPadding(dongle.PKCS7)
-	cipher.SetKey(key)
 	db, err = leveldb.OpenFile("./path/db", nil)
 	if err != nil {
 		log.Println("level db open file:", err)
