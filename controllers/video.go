@@ -1,25 +1,30 @@
 package controllers
 
 import (
-	"cosmosVideoApi/models"
 	"crypto/sha256"
+	"dataoceanbackend/models"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/cosmos/cosmos-sdk/client"
+	clientTx "github.com/cosmos/cosmos-sdk/client/tx"
+	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+	"github.com/cosmos/cosmos-sdk/std"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
+	"github.com/cosmos/cosmos-sdk/x/auth/tx"
 	beego "github.com/stonemeta/beego/server/web"
 	//tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	cosTypes "dataoceanbackend/types"
 	xauthsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 	"github.com/everFinance/goar"
 	"github.com/everFinance/goar/types"
 	"github.com/everFinance/goar/utils"
 	"github.com/golang-module/dongle"
 	"github.com/syndtr/goleveldb/leveldb/errors"
-
 	"io"
 	"io/ioutil"
 	"log"
@@ -41,36 +46,6 @@ type voucherInfo struct {
 // Operations about Users
 type VideoController struct {
 	beego.Controller
-}
-
-// @Title AddVideo
-// @Description create users
-// @Param	video		body 	models.Video	true		"body for user content"
-// @Success 200 {int} models.User.Id
-// @Failure 403 body is empty
-// @router / [post]
-func (v *VideoController) Post() {
-	video := &models.Video{}
-	v.ParseForm(video)
-
-	//fmt.Println("remoteaddr:",u.Ctx.Request.Host)
-	//fmt.Println(u.Ctx.Input.RequestBody)
-	//if err:=json.Unmarshal(u.Ctx.Input.RequestBody, user); err != nil {
-	//	fmt.Println("err:", err)
-	//}
-	log.Println("video:", video)
-	vid := models.AddVideo(video)
-	log.Println("vid:", vid)
-	//将video信息转发给应用链
-	//var msg string
-	if succ, err := sendVideoInfoToChain(video); err != nil {
-		v.Data["json"] = map[string]interface{}{"success": succ, "data": nil, "error": err}
-
-	} else {
-		v.Data["json"] = map[string]interface{}{"success": succ, "data": nil, "error": nil}
-	}
-
-	v.ServeJSON()
 }
 
 func (v *VideoController) GetVideo() {
@@ -283,45 +258,30 @@ func (v *VideoController) GetIP() {
 	fmt.Println(clientIP)
 }
 
-// @Title SendVoucher
-// @Description send video voucher
-// @Param	accountAddress 	query string	true
-// @Param	level query	string	true
-// @Param	sn query	string	true
-// @Param	size  query	string	true
-// @Success 200
-// @Failure 403  is empty
-// @router /sendVoucher [post]
 func (v *VideoController) SendVoucher() {
 
 	rw := v.Ctx.ResponseWriter
 
-	var voucher models.VoucherInfo
-
 	//获取签名参数
 	paySign := v.GetString("paySign")
 	fmt.Println("paySign:", paySign)
-	sign, errDecode := DecodeMsg(paySign)
+	payData := v.GetString("payData")
+	fmt.Println("payData:", payData)
+	voucherSign, errDecode := parseVoucherSign(paySign)
 	if errDecode != nil {
 		log.Println("errDecode:", errDecode)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
 	}
 
-	success, errValidate := validateSign(ctx, sign)
-	if errValidate != nil || !success {
-		log.Println("errValidate:", errValidate)
-		sendErrorResponse(rw, models.ErrorValidateError)
-	}
-
-	msgS := sign.GetMsgs()[0]
-
-	fmt.Println("msgs:", msgS)
-
 	//对签名参数进行解码
-	voucher = parseMsg(msgS.String())
-	newSize := voucher.ReceivedSizeMB
+	voucherData, errParsePayData := parsePayData(payData, voucherSign.PayPublickey)
+	if errParsePayData != nil {
+		log.Println("errParsePayData", errParsePayData)
+		sendErrorResponse(rw, models.ErrorInternalFaults)
+	}
+	newSize := voucherData.ReceivedSizeMB
 	var sizes uint64
-	key := []byte(voucher.Creator + strconv.FormatUint(voucher.VidoId, 10))
+	key := []byte(voucherSign.Creator + strconv.FormatUint(voucherSign.VidoId, 10))
 	data, errGet := db.Get(key, nil)
 
 	if errGet == errors.ErrNotFound {
@@ -344,7 +304,12 @@ func (v *VideoController) SendVoucher() {
 		log.Println("errPut:", errPut)
 		sendErrorResponse(rw, models.ErrorDBError)
 	}
-	var msg models.VoucherSign
+	var msg []byte
+	msg, errSubmit := makeSubmitPaysign(voucherSign.Creator, paySign, payData)
+	if errSubmit != nil {
+		log.Println("errSumit:", errSubmit)
+		sendErrorResponse(rw, models.ErrorInternalFaults)
+	}
 
 	if err := mQueue.Publish("sendTx", msg); err != nil {
 		log.Println("mq publish error:", err.Error())
@@ -355,12 +320,6 @@ func (v *VideoController) SendVoucher() {
 
 }
 
-// @Title settlement
-// @Description chain token settle
-// @Param		videoID  path	string	true
-// @Success 200
-// @Failure 403  is empty
-// @router /settle [post]
 func (v *VideoController) Settlement() {
 	var settle *models.SettleInfo
 	videoID := v.GetString("videoID")
@@ -373,12 +332,6 @@ func (v *VideoController) Settlement() {
 	v.ServeJSON()
 }
 
-// @Title getVideoFromAr
-// @Description getVideoFromAr
-// @Param		txUrl path string	true
-// @Success 200
-// @Failure 403  is empty
-// @router /getVideoFromAr [get]
 func (v *VideoController) GetVideoFromAr() {
 	txId := v.GetString("txUrl")
 	fmt.Println("txID:", txId)
@@ -397,11 +350,6 @@ func (v *VideoController) GetVideoFromAr() {
 	//}
 }
 
-// @Title sendVideoToAr
-// @Description sendVideoToAr
-// @Success 200
-// @Failure 403  is empty
-// @router /sendVideoToAr [post]
 func (v *VideoController) SendVideoToAr() {
 	arNode := "http://localhost:1984"
 	w, err := goar.NewWalletFromPath("./conf/account2.json", arNode)
@@ -496,148 +444,25 @@ func sendVideoInfoToChain(video *models.Video) (string, error) {
 	}
 }
 
-func DecodeMsg(msg string) (xauthsigning.Tx, error) {
-	msgbytes, errhexDecode := hex.DecodeString(msg)
-	if errhexDecode != nil {
-		log.Println("errBytes:", errhexDecode)
-		return nil, errhexDecode
-	}
-	tx, errTxDecode := appCos.TxConfig().TxDecoder()(msgbytes)
-
-	if errTxDecode != nil {
-		log.Println("errTxDecode:", errTxDecode)
-		return nil, errTxDecode
-	}
-
-	//json,errJsonEncode :=appCos.TxConfig().TxJSONEncoder()(tx)
-	//if errJsonEncode != nil {
-	//	log.Println("errJsonEncode:", errJsonEncode)
-	//	return nil, errJsonEncode
-	//}
-	return tx.(xauthsigning.Tx), nil
-}
-
-func validateSign(ctx sdk.Context, sigTx xauthsigning.Tx) (bool, error) {
-
-	var success bool = true
-
-	//ctx := appCos.NewContext(true, tmproto.Header{Height: appCos.LastBlockHeight()})
-
-	txConfig := appCos.TxConfig()
-	handler := txConfig.SignModeHandler()
-	signers := sigTx.GetSigners()
-	sigs, errGetSign := sigTx.GetSignaturesV2()
-	if errGetSign != nil {
-		log.Println("errGetSign:", errGetSign)
-		return false, errGetSign
-	}
-	if len(sigs) != len(signers) {
-		success = false
-	}
-
-	for i, sig := range sigs {
-		var (
-			pubKey  = sig.PubKey
-			sigAddr = sdk.AccAddress(pubKey.Address())
-		)
-		if i >= len(signers) || !sigAddr.Equals(signers[i]) {
-			success = false
-		}
-
-		//accnum := appCos.AccountKeeper.GetAccount(ctx, sigAddr).GetAccountNumber()
-		//accseq := appCos.AccountKeeper.GetAccount(ctx, sigAddr).GetSequence()
-		signingData := xauthsigning.SignerData{
-			Address:       sigAddr.String(),
-			ChainID:       "test-chain-1",
-			AccountNumber: 0,
-			Sequence:      0,
-			PubKey:        pubKey,
-		}
-		//pubKey.VerifySignature(signingData)
-		err := xauthsigning.VerifySignature(ctx, pubKey, signingData, sig.Data, handler, sigTx)
-		if err != nil {
-			return false, err
-		}
-	}
-	return success, nil
-
-}
-
-func EncodeSignMsg(tx xauthsigning.Tx) (string, error) {
-	txconfig := appCos.TxConfig()
-	txBytes, err := txconfig.TxEncoder()(tx)
-	if err != nil {
-		return "", err
-	}
-	txBytesBase64 := base64.StdEncoding.EncodeToString(txBytes)
-	return txBytesBase64, nil
-}
-
-func SignMsg(ctx sdk.Context, Msg *models.VoucherSign, priv cryptotypes.PrivKey) (xauthsigning.Tx, error) {
-	msg := NewMsgSubmitPaySign(Msg.Creator, Msg.Sign)
-	txConfig := appCos.TxConfig()
-	txBuilder := appCos.TxConfig().NewTxBuilder()
-	addr, errAcc := sdk.AccAddressFromBech32(msg.Creator)
-	if errAcc != nil {
-		log.Println("errAcc:", errAcc)
-		return nil, errAcc
-	}
-	pubkey, errPubkey := appCos.AccountKeeper.GetPubKey(ctx, addr)
-	if errPubkey != nil {
-		log.Println("errPubkey:", pubkey)
-		return nil, errPubkey
-	}
-	errSetMsg := txBuilder.SetMsgs(msg)
-	if errSetMsg != nil {
-		log.Println("errSetMsg:", errSetMsg)
-		return nil, errSetMsg
-	}
-	var sigsV2 []signing.SignatureV2
-	signerData := xauthsigning.SignerData{
-		Address: sdk.AccAddress(pubkey.Address()).String(),
-		ChainID: "test-chain-1",
-	}
-	sigV2, err := SignWithPrivKey(
-		txConfig.SignModeHandler().DefaultMode(), signerData,
-		txBuilder, priv, txConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	sigsV2 = append(sigsV2, sigV2)
-	return txBuilder.GetTx(), nil
-
-}
-
-func getMsgInfo(ctx sdk.Context, tx xauthsigning.Tx) []models.VoucherInfo {
-	msgs := tx.GetMsgs()
-	var vouchers []models.VoucherInfo
-	for i := 0; i < len(msgs); i++ {
-		tempVoucher := parseMsg(msgs[i].String())
-		vouchers = append(vouchers, tempVoucher)
-	}
-	return vouchers
-}
-
-func parseMsg(src string) models.VoucherInfo {
-	var voucherInfo models.VoucherInfo
-
-	strs := strings.Split(src, " ")
-	creator := strings.Split(strs[0], ":")[1]
-	videoid := strings.Split(strs[1], ":")[1]
-	level := strings.Split(strs[2], ":")[1]
-	sn := strings.Split(strs[3], ":")[1]
-	receiveMB := strings.Split(strs[4], ":")[1]
-	time := strings.Split(strs[5], ":")[1]
-	voucherInfo.Sn, _ = strconv.ParseUint(sn, 10, 64)
-	voucherInfo.Level, _ = strconv.ParseUint(level, 10, 64)
-	voucherInfo.VidoId, _ = strconv.ParseUint(videoid, 10, 64)
-	voucherInfo.ReceivedSizeMB, _ = strconv.ParseUint(receiveMB, 10, 64)
-	voucherInfo.Timestamp, _ = strconv.ParseUint(time, 10, 64)
-	voucherInfo.Creator = creator
-
-	return voucherInfo
-}
+//func parseMsg(src string) models.VoucherInfo {
+//	var voucherInfo models.VoucherInfo
+//
+//	strs := strings.Split(src, " ")
+//	creator := strings.Split(strs[0], ":")[1]
+//	videoid := strings.Split(strs[1], ":")[1]
+//	level := strings.Split(strs[2], ":")[1]
+//	sn := strings.Split(strs[3], ":")[1]
+//	receiveMB := strings.Split(strs[4], ":")[1]
+//	time := strings.Split(strs[5], ":")[1]
+//	voucherInfo.Sn, _ = strconv.ParseUint(sn, 10, 64)
+//	voucherInfo.Level, _ = strconv.ParseUint(level, 10, 64)
+//	voucherInfo.VidoId, _ = strconv.ParseUint(videoid, 10, 64)
+//	voucherInfo.ReceivedSizeMB, _ = strconv.ParseUint(receiveMB, 10, 64)
+//	voucherInfo.Timestamp, _ = strconv.ParseUint(time, 10, 64)
+//	voucherInfo.Creator = creator
+//
+//	return voucherInfo
+//}
 
 func getDecryptMsg(src string) (address string, videoId string, expire string) {
 	strs := strings.Split(src, ",")
@@ -647,33 +472,206 @@ func getDecryptMsg(src string) (address string, videoId string, expire string) {
 	return
 }
 
-func SignWithPrivKey(
-	signMode signing.SignMode, signerData xauthsigning.SignerData,
-	txBuilder client.TxBuilder, priv cryptotypes.PrivKey, txConfig client.TxConfig) (signing.SignatureV2, error) {
-	var sigV2 signing.SignatureV2
-
-	// Generate the bytes to be signed.
-	signBytes, err := txConfig.SignModeHandler().GetSignBytes(signMode, signerData, txBuilder.GetTx())
+func makeSubmitPaysign(creator string, paySign string, payData string) ([]byte, error) {
+	//var priv secp256k1.PrivKey
+	var accountNumber uint64
+	var sequence uint64
+	priv, err := getPrivKey(creator)
 	if err != nil {
-		return sigV2, err
+		fmt.Println(err.Error())
+		return []byte{}, err
+	}
+	pub := priv.PubKey()
+	addr := sdk.AccAddress(pub.Address())
+	fmt.Println("pub:", pub)
+	fmt.Println("addr:", addr.String())
+
+	accountNumber, sequence, errGetAccount := getAccountNumSequence(addr.String())
+	if errGetAccount != nil {
+		log.Println("errGetAccount:", errGetAccount)
+		return []byte{}, errGetAccount
 	}
 
-	// Sign those bytes
-	signature, err := priv.Sign(signBytes)
+	interfaceRegistry := codectypes.NewInterfaceRegistry()
+	std.RegisterInterfaces(interfaceRegistry)
+	interfaceRegistry.RegisterImplementations((*sdk.Msg)(nil), &cosTypes.MsgSubmitPaySign{})
+	protoCodec := codec.NewProtoCodec(interfaceRegistry)
+	txConfig := tx.NewTxConfig(protoCodec, tx.DefaultSignModes)
+	txBuilder = txConfig.NewTxBuilder()
+
+	msg1 := cosTypes.NewMsgSubmitPaySign(addr.String(), paySign, payData)
+	err = txBuilder.SetMsgs(msg1)
 	if err != nil {
-		return sigV2, err
+		fmt.Println(err)
+		return []byte{}, err
+	}
+	txJSONBytes, err := txConfig.TxJSONEncoder()(txBuilder.GetTx())
+	if err != nil {
+		fmt.Println(err)
+		return []byte{}, err
+	}
+	fmt.Println(string(txJSONBytes))
+
+	sigV2 := signing.SignatureV2{
+		PubKey: pub,
+		Data: &signing.SingleSignatureData{
+			SignMode:  txConfig.SignModeHandler().DefaultMode(),
+			Signature: nil,
+		},
+		Sequence: 0,
+	}
+	err = txBuilder.SetSignatures(sigV2)
+	if err != nil {
+		fmt.Println(err)
+		return []byte{}, err
 	}
 
-	// Construct the SignatureV2 struct
-	sigData := signing.SingleSignatureData{
-		SignMode:  signMode,
-		Signature: signature,
+	signerData := xauthsigning.SignerData{
+		ChainID:       "dataocean",
+		AccountNumber: accountNumber,
+		Sequence:      sequence,
 	}
 
-	sigV2 = signing.SignatureV2{
-		PubKey: priv.PubKey(),
-		Data:   &sigData,
+	sigV2, err = clientTx.SignWithPrivKey(
+		txConfig.SignModeHandler().DefaultMode(), signerData,
+		txBuilder, priv, txConfig, sequence)
+	if err != nil {
+		fmt.Println(err)
+		return []byte{}, err
 	}
 
-	return sigV2, nil
+	err = txBuilder.SetSignatures(sigV2)
+	if err != nil {
+		fmt.Println(err)
+		return []byte{}, err
+	}
+
+	txJSONBytes, err = txConfig.TxJSONEncoder()(txBuilder.GetTx())
+	if err != nil {
+		fmt.Println(err)
+		return []byte{}, err
+	}
+	fmt.Println(string(txJSONBytes))
+
+	txBytes, err := txConfig.TxEncoder()(txBuilder.GetTx())
+	if err != nil {
+		fmt.Println(err)
+		return []byte{}, err
+	}
+	txBytesBase64 := base64.StdEncoding.EncodeToString(txBytes)
+	fmt.Println(string(txBytesBase64))
+
+	return txBytes, nil
+
+}
+
+func getAccountNumSequence(address string) (uint64, uint64, error) {
+	remoteAddress, err := beego.AppConfig.String("remoteAddress")
+	if err != nil {
+		log.Println("getremoteAddress:", remoteAddress)
+		return 0, 0, err
+	}
+	req, errRequest := http.NewRequest("POST", fmt.Sprintf("http://%s/cosmos/auth/v1beta1/accounts/%s", remoteAddress, address), strings.NewReader(""))
+	if errRequest != nil {
+		log.Println("errRequest:", errRequest)
+		return 0, 0, errRequest
+	}
+	res, errRes := http.DefaultClient.Do(req)
+	if errRes != nil {
+		log.Println("errRes:", errRes)
+		return 0, 0, errRequest
+	}
+	respBody, err := ioutil.ReadAll(res.Body)
+	num, sequence, errParse := parseResNum(string(respBody))
+	if errParse != nil {
+		log.Println("errParse:", errParse)
+		return 0, 0, errParse
+	}
+	return num, sequence, nil
+
+}
+
+func parseResNum(res string) (uint64, uint64, error) {
+	var result models.GetAccountRes
+	if err := json.Unmarshal([]byte(res), &result); err != nil {
+		log.Println("err:", err)
+		return 0, 0, err
+	}
+	num, seq := result.AccountNum, result.Squence
+	return num, seq, nil
+
+}
+
+func getCodec() codec.Codec {
+	registry := codectypes.NewInterfaceRegistry()
+	cryptocodec.RegisterInterfaces(registry)
+	return codec.NewProtoCodec(registry)
+}
+
+func getPrivKey(addr string) (cryptotypes.PrivKey, error) {
+	acc, err := sdk.AccAddressFromBech32(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	kr, err := keyring.New("dataocean", keyring.BackendTest, "~/.dataocean", nil, getCodec())
+	k, err := kr.KeyByAddress(acc)
+	if err != nil {
+		return nil, err
+	}
+	rl := k.GetLocal()
+	privKey := rl.PrivKey.GetCachedValue().(cryptotypes.PrivKey)
+	return privKey, nil
+}
+
+func parsePayData(payData string, publicKey string) (*models.VoucherPayData, error) {
+	var voucherData *models.VoucherPayData
+
+	decrptData := dongle.Decrypt.FromHexString(payData).ByRsa(publicKey).ToString()
+	fmt.Println("decrptData:", decrptData)
+	if err := json.Unmarshal([]byte(decrptData), voucherData); err != nil {
+		log.Println("err:", err)
+		return nil, err
+	}
+
+	return voucherData, nil
+}
+
+func parseVoucherSign(paySign string) (*models.VoucherPaySign, error) {
+	var voucherSign *models.VoucherPaySign
+	parseSign, err := parsePaySign(sdk.Context{}, paySign)
+	if err != nil {
+		log.Println("parsePaySign:", err)
+		return nil, err
+	}
+	voucherSign.PayPublickey = parseSign.PayPublicKey
+	voucherSign.VidoId = parseSign.VideoId
+	voucherSign.Creator = parseSign.Creator
+
+	return voucherSign, nil
+
+}
+
+func parsePaySign(ctx2 sdk.Context, paySignStr string) (*cosTypes.MsgPaySign, error) {
+	interfaceRegistry := codectypes.NewInterfaceRegistry()
+	std.RegisterInterfaces(interfaceRegistry)
+	interfaceRegistry.RegisterImplementations((*sdk.Msg)(nil), &cosTypes.MsgPaySign{})
+	protoCodec := codec.NewProtoCodec(interfaceRegistry)
+	txConfig := tx.NewTxConfig(protoCodec, tx.DefaultSignModes)
+
+	txBytes, err := base64.StdEncoding.DecodeString(paySignStr)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("txBytes:", txBytes)
+	theTx, err := txConfig.TxDecoder()(txBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	msgs := theTx.GetMsgs()
+	if len(msgs) == 0 {
+		return nil, errors.New("signature message is empty")
+	}
+	return msgs[0].(*cosTypes.MsgPaySign), nil
 }

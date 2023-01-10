@@ -1,30 +1,25 @@
 package controllers
 
 import (
-	"cosmosVideoApi/models"
-	"cosmosVideoApi/mq"
-	"cosmossdk.io/simapp"
+	"dataoceanbackend/models"
+	"dataoceanbackend/mq"
+	//"dataoceanbackend/types"
 	"encoding/json"
 	"fmt"
-	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/cosmos-sdk/client"
+	//"github.com/cosmos/cosmos-sdk/codec"
+	//codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	//"github.com/cosmos/cosmos-sdk/std"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx"
+	//authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
+	"github.com/golang-module/dongle"
 	beego "github.com/stonemeta/beego/server/web"
 	"github.com/syndtr/goleveldb/leveldb"
-	logging "github.com/tendermint/tendermint/libs/log"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"google.golang.org/grpc"
-	"os"
-	//"github.com/cosmos/cosmos-sdk/types/tx/signing"
-	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-
-	//"github.com/golang-module/dongle"
-	"github.com/golang-module/dongle"
 	"io"
-	//"io/ioutil"
 	"log"
 	"net/http"
-	//"strings"
 	"time"
 )
 
@@ -54,17 +49,12 @@ var contentTypeMap = map[string]string{
 }
 var mQueue *mq.Client
 var db *leveldb.DB
-var appCos *simapp.SimApp
 var cipher *dongle.Cipher
 var ctx sdk.Context
+var txBuilder client.TxBuilder
 
 func init() {
 	var err error
-	cosmosDb := dbm.NewMemDB()
-
-	logger := logging.NewTMLogger(logging.NewSyncWriter(os.Stdout))
-	appCos = simapp.NewSimApp(logger, cosmosDb, nil, true, simtestutil.NewAppOptionsWithFlagHome(simapp.DefaultNodeHome))
-	ctx = appCos.NewContext(true, tmproto.Header{Height: appCos.LastBlockHeight()})
 	db, err = leveldb.OpenFile("./path/db", nil)
 	if err != nil {
 		log.Println("level db open file:", err)

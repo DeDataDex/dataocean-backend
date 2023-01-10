@@ -1,7 +1,7 @@
 package main
 
 import (
-	_ "cosmosVideoApi/routers"
+	_ "dataoceanbackend/routers"
 	"flag"
 	"fmt"
 	beego "github.com/stonemeta/beego/server/web"

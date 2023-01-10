@@ -2,7 +2,5 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/extern/beego" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/extern/dataocean" vcs="Git" />
   </component>
 </project>

@@ -8,14 +8,14 @@
 package routers
 
 import (
-	"cosmosVideoApi/controllers"
+	"dataoceanbackend/controllers"
 	beego "github.com/stonemeta/beego/server/web"
 )
 
 func init() {
 
-	beego.Router("/:message/:videoID",&controllers.VideoController{},"get:GetVideo")
-	beego.Router("/senderVoucher",&controllers.VideoController{}, "post:SendVoucher")
+	beego.Router("/:message/:videoID", &controllers.VideoController{}, "get:GetVideo")
+	beego.Router("/senderVoucher", &controllers.VideoController{}, "post:SendVoucher")
 	beego.Router("/settle", &controllers.VideoController{}, "post:Settlement")
 
 }

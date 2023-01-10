@@ -11,8 +11,8 @@ To build miner, you need a working installation of Go
 1.Clone the repository:
 
 ```shell
-git clone https://github.com/DeDataDex/dataocean-backend.git
-cd dataocean-backend/
+git clone https://dataoceanbackend.git
+cd dataoceanbackend/
 ```
 
 2.Build miner
