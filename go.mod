@@ -6,6 +6,7 @@ replace github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alp
 
 require (
 	github.com/cosmos/cosmos-sdk v0.46.7
+	github.com/go-resty/resty/v2 v2.7.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang-module/dongle v0.2.6
 	github.com/golang/protobuf v1.5.2
@@ -50,7 +51,6 @@ require (
 	github.com/go-kit/kit v0.12.1-0.20220826005032-a7ba4fa4e289 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
-	github.com/go-resty/resty/v2 v2.7.0 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect

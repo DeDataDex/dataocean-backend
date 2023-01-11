@@ -94,6 +94,11 @@ type ErrResponse struct {
 	Error  Err
 }
 
+type NormalResponse struct {
+	HttpSc  int
+	Message string
+}
+
 type SettleInfo struct {
 	UserAddress string `json:"user_address"`
 	Charge      string `json:"charge"`
@@ -110,6 +115,7 @@ var (
 )
 
 var (
+	SuccessSignRequest          = NormalResponse{HttpSc: 201, Message: "接收签名成功"}
 	ErrorRequestBodyParseFailed = ErrResponse{HttpSC: 400, Error: Err{Error: "Request body is not correct", ErrorCode: "001"}}
 	ErrorInsufficientBalance    = ErrResponse{HttpSC: 401, Error: Err{Error: "User's balance is not enough.", ErrorCode: "002"}}
 	ErrorDBError                = ErrResponse{HttpSC: 500, Error: Err{Error: "DB ops failed", ErrorCode: "003"}}

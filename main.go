@@ -15,11 +15,10 @@ func main() {
 		dataDir := flag.String("fileDir", "./temp", "File Save Path")
 		threshold := flag.String("threshold", "200", "set judge threshold")
 
-		key := flag.String("aesKey", "key_for_server_2", "set aeskey of every miner")
+		key := flag.String("aesKey", "key_for_server_1", "set aeskey of every miner")
 
 		flag.Parse()
 		beego.AppConfig.Set("remoteAddress", *remoteAddress)
-
 		beego.AppConfig.Set("aesKey", *key)
 		fmt.Println("remoteAddress:", *remoteAddress)
 		beego.AppConfig.Set("FileDir", *dataDir)

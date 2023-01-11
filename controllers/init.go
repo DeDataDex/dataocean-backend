@@ -92,9 +92,10 @@ func sendErrorResponse(w http.ResponseWriter, errResp models.ErrResponse) {
 	io.WriteString(w, string(resStr))
 }
 
-func sendNormalResponse(w http.ResponseWriter, resp string, sc int) {
+func sendNormalResponse(w http.ResponseWriter, normalResp models.NormalResponse, sc int) {
 	w.WriteHeader(sc)
-	io.WriteString(w, resp)
+	resStr, _ := json.Marshal(&normalResp.Message)
+	io.WriteString(w, string(resStr))
 }
 
 func sendSettleMsg(ctx sdk.Context, val []byte) {
