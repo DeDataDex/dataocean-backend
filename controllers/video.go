@@ -10,8 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
-	"github.com/cosmos/cosmos-sdk/crypto/keyring"
-	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/cosmos/cosmos-sdk/std"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
@@ -476,11 +475,12 @@ func makeSubmitPaysign(creator string, paySign string, payData string) ([]byte, 
 	//var priv secp256k1.PrivKey
 	var accountNumber uint64
 	var sequence uint64
-	priv, err := getPrivKey(creator)
-	if err != nil {
-		fmt.Println(err.Error())
-		return []byte{}, err
-	}
+	//priv, err := getPrivKey(creator)
+	priv := secp256k1.GenPrivKey()
+	//if err != nil {
+	//	fmt.Println(err.Error())
+	//	return []byte{}, err
+	//}
 	pub := priv.PubKey()
 	addr := sdk.AccAddress(pub.Address())
 	fmt.Println("pub:", pub)
@@ -500,10 +500,10 @@ func makeSubmitPaysign(creator string, paySign string, payData string) ([]byte, 
 	txBuilder = txConfig.NewTxBuilder()
 
 	msg1 := cosTypes.NewMsgSubmitPaySign(addr.String(), paySign, payData)
-	err = txBuilder.SetMsgs(msg1)
-	if err != nil {
-		fmt.Println(err)
-		return []byte{}, err
+	errSet := txBuilder.SetMsgs(msg1)
+	if errSet != nil {
+		fmt.Println(errSet)
+		return []byte{}, errSet
 	}
 	txJSONBytes, err := txConfig.TxJSONEncoder()(txBuilder.GetTx())
 	if err != nil {
@@ -608,21 +608,21 @@ func getCodec() codec.Codec {
 	return codec.NewProtoCodec(registry)
 }
 
-func getPrivKey(addr string) (cryptotypes.PrivKey, error) {
-	acc, err := sdk.AccAddressFromBech32(addr)
-	if err != nil {
-		return nil, err
-	}
-
-	kr, err := keyring.New("dataocean", keyring.BackendTest, "~/.dataocean", nil, getCodec())
-	k, err := kr.KeyByAddress(acc)
-	if err != nil {
-		return nil, err
-	}
-	rl := k.GetLocal()
-	privKey := rl.PrivKey.GetCachedValue().(cryptotypes.PrivKey)
-	return privKey, nil
-}
+//func getPrivKey(addr string) (cryptotypes.PrivKey, error) {
+//	acc, err := sdk.AccAddressFromBech32(addr)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	kr, err := keyring.New("dataocean", keyring.BackendTest, "~/.dataocean", nil, getCodec())
+//	k, err := kr.KeyByAddress(acc)
+//	if err != nil {
+//		return nil, err
+//	}
+//	rl := k.GetLocal()
+//	privKey := rl.PrivKey.GetCachedValue().(cryptotypes.PrivKey)
+//	return privKey, nil
+//}
 
 func parsePayData(payData string, publicKey string) (*models.VoucherPayData, error) {
 	var voucherData *models.VoucherPayData

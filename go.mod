@@ -1,14 +1,9 @@
 module dataoceanbackend
 
-go 1.19
-
-replace github.com/gogo/protobuf v1.3.3 => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
-
-//replace github.com/btcsuite/btcd/btcec => github.com/btcsuite/btcd/btcec/v2 latest
-//require github.com/btcsuite/btcd v0.23.0
-require github.com/cosmos/cosmos-sdk v0.47.0-rc1
+go 1.18
 
 require (
+	github.com/cosmos/cosmos-sdk v0.46.7
 	github.com/everFinance/goar v1.4.7
 	github.com/gogo/protobuf v1.3.3
 	github.com/golang-module/dongle v0.2.6
@@ -23,9 +18,6 @@ require (
 )
 
 require (
-	cosmossdk.io/api v0.2.6 // indirect
-	cosmossdk.io/core v0.3.2 // indirect
-	cosmossdk.io/depinject v1.0.0-alpha.3 // indirect
 	cosmossdk.io/errors v1.0.0-beta.7 // indirect
 	cosmossdk.io/math v1.0.0-beta.4 // indirect
 	filippo.io/edwards25519 v1.0.0-rc.1 // indirect
@@ -35,6 +27,7 @@ require (
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bgentry/speakeasy v0.1.0 // indirect
+	github.com/btcsuite/btcd/btcec v0.0.0-00010101000000-000000000000 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
 	github.com/btcsuite/btcd/btcutil v1.1.3 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
@@ -81,7 +74,6 @@ require (
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hdevalence/ed25519consensus v0.0.0-20220222234857-c00d1f31bab3 // indirect
-	github.com/huandu/skiplist v1.2.0 // indirect
 	github.com/inconshreveable/log15 v0.0.0-20201112154412-8562bdadbbac // indirect
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
@@ -125,7 +117,6 @@ require (
 	github.com/tendermint/go-amino v0.16.0 // indirect
 	github.com/tendermint/tendermint v0.37.0-rc2 // indirect
 	github.com/tendermint/tm-db v0.6.7 // indirect
-	github.com/tidwall/btree v1.5.2 // indirect
 	github.com/zondax/hid v0.9.1 // indirect
 	github.com/zondax/ledger-go v0.14.0 // indirect
 	go.etcd.io/bbolt v1.3.6 // indirect
@@ -140,8 +131,9 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/datatypes v1.0.1 // indirect
 	gorm.io/gorm v1.22.4 // indirect
-	pgregory.net/rapid v0.5.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace github.com/btcsuite/btcd/btcec => github.com/btcsuite/btcd v0.23.3
+replace github.com/btcsuite/btcd/btcec => ./btcec
+
+replace github.com/gogo/protobuf v1.3.3 => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
