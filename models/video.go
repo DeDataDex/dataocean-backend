@@ -6,7 +6,7 @@ import (
 
 type Video struct {
 	Id string `json:"id"`
-	//AuthorId int	`json:"author_id"`
+	// AuthorId int	`json:"author_id"`
 	Name string `json:"name"`
 
 	PicUrl string `json:"pic_url"`
@@ -17,7 +17,7 @@ type Video struct {
 
 	Size int `json:"size"`
 
-	//DisplayCtime string		`json:"display_ctime"`
+	// DisplayCtime string		`json:"display_ctime"`
 }
 
 type VoucherInfo struct {
@@ -30,10 +30,10 @@ type VoucherInfo struct {
 	Timestamp      uint64 `json:"paytime"`
 }
 
-//type VoucherSign struct {
+// type VoucherSign struct {
 //	Creator string `json:"creator" protobuf:"bytes,1,opt,name=creator,json=creator,proto3"`
 //	Sign    string `json:"paySign" protobuf:"bytes,2,opt,name=paySign,json=paySign,proto3"`
-//}
+// }
 
 type SignBody struct {
 	Messages                    Messages      `json:"message"`
@@ -43,9 +43,10 @@ type SignBody struct {
 	NonCriticalExtensionOptions []interface{} `json:"non_critical_extension_options"`
 }
 type GetAccountRes struct {
-	Account    Account `json:"account"`
-	AccountNum uint64  `json:"account_number"`
-	Squence    uint64  `json:"squence"`
+	Account struct {
+		AccountNum string `json:"account_number"`
+		Sequence   string `json:"sequence"`
+	} `json:"account"`
 }
 
 type Account struct {
@@ -65,14 +66,14 @@ type Publickey struct {
 }
 
 type VoucherPayData struct {
-	ReceivedSizeMB uint64 `json:"received_mb"`
+	ReceivedSizeMB uint64 `json:"receivedSizeMB"`
 	Timestamp      uint64 `json:"timestamp"`
 }
 
 type VoucherPaySign struct {
-	Creator      string `json:"creator"`
-	VidoId       uint64 `json:"videoId"`
-	PayPublickey string `json:"payPublicKey"`
+	Creator       string `json:"creator"`
+	VidoId        uint64 `json:"videoId"`
+	PayPrivateKey string `json:"payPrivateKey"`
 }
 
 type ModeInfo struct {

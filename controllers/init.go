@@ -1,31 +1,31 @@
 package controllers
 
 import (
-	"dataoceanbackend/models"
-	"dataoceanbackend/mq"
-	//"dataoceanbackend/types"
+	// "dataoceanbackend/types"
 	"encoding/json"
 	"fmt"
-	"github.com/cosmos/cosmos-sdk/client"
-	//"github.com/cosmos/cosmos-sdk/codec"
-	//codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	//"github.com/cosmos/cosmos-sdk/std"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/types/tx"
-	//authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
-	"github.com/golang-module/dongle"
-	beego "github.com/stonemeta/beego/server/web"
-	"github.com/syndtr/goleveldb/leveldb"
-	"google.golang.org/grpc"
 	"io"
 	"log"
 	"net/http"
 	"time"
+
+	"dataoceanbackend/models"
+	"dataoceanbackend/mq"
+	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/go-resty/resty/v2"
+	beego "github.com/stonemeta/beego/server/web"
+	// "github.com/cosmos/cosmos-sdk/codec"
+	// codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	// "github.com/cosmos/cosmos-sdk/std"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	// authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
+	"github.com/golang-module/dongle"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var account string
 var contentTypeMap = map[string]string{
-	//"mp4": "video/mp4",
+	// "mp4": "video/mp4",
 	"asf":   "video/x-ms-asf",
 	"asx":   "video/x-ms-asf",
 	"avi":   "video/avi",
@@ -76,7 +76,7 @@ func init() {
 			case <-t.C:
 				val := m.GetPayLoad(ch)
 				if val != nil {
-					go sendSettleMsg(ctx, val)
+					go sendSettleMsg(ctx, val.([]byte))
 				}
 			default:
 			}
@@ -97,31 +97,41 @@ func sendNormalResponse(w http.ResponseWriter, resp string, sc int) {
 	io.WriteString(w, resp)
 }
 
-func sendSettleMsg(ctx sdk.Context, val interface{}) {
+func sendSettleMsg(ctx sdk.Context, val []byte) {
 	remoteAddress, errAppConfig := beego.AppConfig.String("remoteAddress")
 	if errAppConfig != nil {
 		log.Println("errAppConfigGet:", errAppConfig)
 		return
 	}
-	fmt.Println("val:", val)
-	for {
-		grpcConn, errDial := grpc.Dial(remoteAddress, grpc.WithInsecure())
-		if errDial != nil {
-			log.Println("errDail:", errDial)
-		}
-		defer grpcConn.Close()
-		txclient := tx.NewServiceClient(grpcConn)
-		grpcRes, err := txclient.BroadcastTx(ctx,
-			&tx.BroadcastTxRequest{
-				Mode:    tx.BroadcastMode_BROADCAST_MODE_SYNC,
-				TxBytes: val.([]byte)},
-		)
+	client := resty.New()
+
+	fmt.Println("sendSettleMsg:", string(val))
+	var i int
+	for i = 0; i < 5; i++ {
+		result := struct {
+			TxResponse struct {
+				Code   int    `json:"code"`
+				RawLog string `json:"raw_log"`
+			} `json:"tx_response"`
+		}{}
+		resp, err := client.R().
+			SetHeader("Content-Type", "application/json").
+			SetBody(map[string]string{
+				"tx_bytes": string(val),
+				"mode":     "BROADCAST_MODE_BLOCK",
+			}).
+			SetResult(&result).
+			Post(fmt.Sprintf("http://%s/cosmos/tx/v1beta1/txs", remoteAddress))
 		if err != nil {
-			log.Println("err:", err)
+			fmt.Println("sendSettleMsg err", err.Error())
+			time.Sleep(time.Second)
+			continue
 		}
-		if grpcRes.TxResponse.Code == 0 {
-			break
-		}
-		time.Sleep(time.Second)
+		fmt.Printf("sendSettleMsg ret: code=%d rawlog=%s resp=%s", result.TxResponse.Code, result.TxResponse.RawLog, resp.String())
+
+		break
+	}
+	if i >= 5 {
+		log.Println("not settleMsg success", string(val))
 	}
 }
