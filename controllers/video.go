@@ -18,6 +18,7 @@ import (
 
 	"dataoceanbackend/models"
 	cosTypes "dataoceanbackend/types"
+
 	clientTx "github.com/cosmos/cosmos-sdk/client/tx"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -41,23 +42,34 @@ type VideoController struct {
 }
 
 func (v *VideoController) GetVideo() {
-	var mutexDB sync.Mutex
+	// var mutexDB sync.Mutex
 	rr := v.Ctx.Request
 	rw := v.Ctx.ResponseWriter
 	var address, videoId, expire string
 	// 获取请求参数
 	msg := v.GetString(":message")
 	filename := v.GetString(":videoID")
+
+	fileNameSplit := strings.Split(filename, ".")
+	if len(fileNameSplit) != 2 {
+		sendErrorResponse(rw, models.ErrorFileError)
+		return
+	}
+	prefix := fileNameSplit[0]
+	filetype := fileNameSplit[1]
+	fileNameSplit = strings.Split(prefix, "-")
+	videoIdStr := fileNameSplit[0]
+
 	// 对message进行Unescape
 	msgUnescape, errUnescape := url.PathUnescape(msg)
 	if errUnescape != nil {
 		fmt.Println("errUnescape:", errUnescape)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
+		return
 	}
-	// 解密message并获取参数
+
 	// 解密message并获取参数
 	aeskeying, _ := beego.AppConfig.String("aesKey")
-	fmt.Println("key:", aeskeying)
 	cipher = dongle.NewCipher()
 	cipher.SetMode(dongle.ECB)
 	cipher.SetPadding(dongle.PKCS7)
@@ -65,39 +77,29 @@ func (v *VideoController) GetVideo() {
 	decryptMsg := dongle.Decrypt.FromBase64String(msgUnescape).ByAes(cipher).ToString()
 	fmt.Println("decryptmsg:", decryptMsg)
 	address, videoId, expire = getDecryptMsg(decryptMsg)
+
+	log.Println("开始请求", filename, address, videoId)
+
 	// 校验参数是否满足条件
 	expire1, errParseInt := strconv.ParseInt(expire, 10, 64)
 	if errParseInt != nil {
 		fmt.Println("errParseInt:", errParseInt)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
-	}
-	ext := strings.Split(filename, ".")
-	prefix := strings.Join(ext[:len(ext)-1], "")
-
-	if ext[len(ext)-1] != "m3u8" {
-		temp := strings.Split(prefix, "-")
-		prefix = strings.Join(temp[:len(temp)-1], "")
-	}
-	if videoId != prefix {
-		fmt.Println("videoId与密文中的videoId不同")
-		sendErrorResponse(rw, models.ErrorVideoIdError)
+		return
 	}
 	if time.Now().Unix() > expire1 {
 		fmt.Println("链接已过期")
 		sendErrorResponse(rw, models.ErrorExpireError)
 		return
 	}
-	dir, _ := beego.AppConfig.String("FileDir")
-	thre, _ := beego.AppConfig.String("threshold")
-	threshold, errThreshold := strconv.ParseInt(thre, 10, 64)
-	if errThreshold != nil {
-		fmt.Println("errThreshold:", errThreshold)
-		sendErrorResponse(rw, models.ErrorInternalFaults)
+	if videoId != videoIdStr {
+		fmt.Println("videoId与密文中的videoId不同")
+		sendErrorResponse(rw, models.ErrorVideoIdError)
 		return
 	}
-	fmt.Println("threshold:", threshold)
-	vl := dir + "/" + prefix + "/" + filename
-	fmt.Println("vl:", vl)
+
+	dir, _ := beego.AppConfig.String("FileDir")
+	vl := dir + "/" + videoId + "/" + filename
 	video, err := os.Open(vl)
 	if err == errors.ErrNotFound {
 		fmt.Println("没有找到视频")
@@ -111,46 +113,55 @@ func (v *VideoController) GetVideo() {
 		sendErrorResponse(rw, models.ErrorFileError)
 		return
 	}
+
+	thre, _ := beego.AppConfig.String("threshold")
+	threshold, errThreshold := strconv.ParseInt(thre, 10, 64)
+	if errThreshold != nil {
+		fmt.Println("errThreshold:", errThreshold)
+		sendErrorResponse(rw, models.ErrorInternalFaults)
+		return
+	}
+
 	// beego.BConfig.WebConfig.ViewsPath
 	var size int64
 
 	filesize := fileInfo.Size()
-	prexfile := strings.Join(ext[:len(ext)-1], "")
-	fmt.Println("prefile:", prexfile)
-	key := []byte(address + prexfile)
-	var bstr string
-	fmt.Println("key:", key)
-	mutexDB.Lock()
+	key := []byte(address + videoId)
+
+	// mutexDB.Lock()
+	// defer mutexDB.Unlock()
+
 	value, errGet := db.Get(key, nil)
-	if errGet != errors.ErrNotFound && string(value) != "" {
-		size, _ = strconv.ParseInt(string(value), 10, 64)
-		fmt.Println("size:", size)
-		_, bstr := formatFileSize(size)
-		log.Printf("该用户的当前视频质押余量为: %s", bstr)
-		if ext[len(ext)-1] != "m3u8" {
-			if filesize-size > threshold*1024*1024 {
-				sendErrorResponse(rw, models.ErrorInsufficientBalance)
+	if errGet != nil {
+		if errGet == errors.ErrNotFound {
+			size = 0
+			log.Println("初始化，该用户的当前视频质押余量为: 0MB")
+			if err := db.Put(key, []byte("0"), nil); err != nil {
+				sendErrorResponse(rw, models.ErrorDBError)
 				return
 			}
-		}
-	} else {
-		size = 0
-		fmt.Println("size0:", strconv.FormatInt(size, 10))
-		log.Println("该用户的当前视频质押余量为: 0MB")
-		if err := db.Put(key, []byte(strconv.FormatInt(size, 10)), nil); err != nil {
-			sendErrorResponse(rw, models.ErrorDBError)
+		} else {
+			sendErrorResponse(rw, models.ErrorInsufficientBalance)
+			return
 		}
 	}
 
-	mutexDB.Unlock()
-	fmt.Println("接下来;", size)
+	size, _ = strconv.ParseInt(string(value), 10, 64)
+	log.Printf("该用户的当前视频质押余量为: %s", formatFileSize(size))
+
+	if size-filesize < threshold*1024*1024 {
+		log.Printf("余量不足直接返回: %s", formatFileSize(size))
+		sendErrorResponse(rw, models.ErrorInsufficientBalance)
+		return
+	}
+
 	var start, end int64
 	if rangeByte := rr.Header.Get("Range"); rangeByte != "" {
 		fmt.Println("rangeByte:", rangeByte)
 		if strings.Contains(rangeByte, "bytes=") && strings.Contains(rangeByte, "-") {
 			fmt.Sscanf(rangeByte, "bytes=%d-%d", &start, &end)
-			fmt.Println("start:", start)
-			fmt.Println("end:", end)
+			// fmt.Println("start:", start)
+			// fmt.Println("end:", end)
 			if end == 0 {
 				end = fileInfo.Size() - 1
 			}
@@ -179,34 +190,24 @@ func (v *VideoController) GetVideo() {
 		sendErrorResponse(rw, models.ErrorInternalFaults)
 	}
 	// ext = strings.Split(fileInfo.Name(), ".")
-	fmt.Println("ext:", ext[len(ext)-1])
 
-	fmt.Println("content-type:", contentTypeMap[ext[len(ext)-1]])
-	if ok := contentTypeMap[ext[len(ext)-1]]; ok != "" {
-		rw.Header().Set("Content-Type", contentTypeMap[ext[len(ext)-1]])
+	fmt.Println("content-type:", contentTypeMap[filetype])
+	if ok := contentTypeMap[filetype]; ok != "" {
+		rw.Header().Set("Content-Type", contentTypeMap[filetype])
 	} else {
 		rw.Header().Set("Content-Type", "application/octet-stream")
 	}
 	rw.Header().Add("Accept-Ranges", "bytes")
 
-	// rw.Header().Add("Content-Disposition", "attachment; filename="+fileInfo.Name())
-	rw.Header().Add("Content-Disposition", "attachment; filename="+fileInfo.Name())
-
 	defer func(size int64, filesize int64) {
-		fmt.Println("fizesize:", filesize)
-		fmt.Println("size", size)
-		size = size - filesize
-		fmt.Println("size:", size)
-		mutexDB.Lock()
-		fmt.Println("key:", key)
-		fmt.Println("sizeformat", strconv.FormatInt(size, 10))
-		defer mutexDB.Unlock()
-		if errPut := db.Put(key, []byte(strconv.FormatInt(size, 10)), nil); errPut != nil {
-			fmt.Println("errPut:", errPut)
+		newSize := size - filesize
+		if errPut := db.Put(key, []byte(strconv.FormatInt(newSize, 10)), nil); errPut != nil {
+			fmt.Println("errPut:", errPut.Error())
 			sendErrorResponse(rw, models.ErrorDBError)
+			return
 		}
-		_, sizeUpdate := formatFileSize(size)
-		log.Printf("该用户在该视频的余量传输前为%s,传输后余量为：%s", bstr, sizeUpdate)
+
+		log.Printf("该用户在该视频的余量传输前为%s,传输后余量为：%s", formatFileSize(size), formatFileSize(newSize))
 	}(size, filesize)
 
 	n := 512
@@ -235,18 +236,6 @@ func (v *VideoController) GetVideo() {
 			return
 		}
 	}
-	fmt.Println("fizesize:", filesize)
-	fmt.Println("size", size)
-	size = size - filesize
-
-	mutexDB.Lock()
-	defer mutexDB.Unlock()
-	if errPut := db.Put(key, []byte(strconv.FormatInt(size, 10)), nil); errPut != nil {
-		fmt.Println("errPut:", errPut)
-		sendErrorResponse(rw, models.ErrorDBError)
-	}
-	_, sizeUpdate := formatFileSize(size)
-	log.Printf("该用户在该视频的余量传输前为%s,传输后余量为：%s", bstr, sizeUpdate)
 }
 
 func (v *VideoController) GetIP() {
@@ -263,7 +252,7 @@ func (v *VideoController) GetIP() {
 }
 
 func (v *VideoController) SendVoucher() {
-	var mutxDB sync.Mutex
+	var mutexDB sync.Mutex
 
 	rw := v.Ctx.ResponseWriter
 
@@ -287,42 +276,27 @@ func (v *VideoController) SendVoucher() {
 	}
 	fmt.Println("voucherData:", voucherData.ReceivedSizeMB, voucherData.Timestamp)
 
-	newSize := voucherData.ReceivedSizeMB
-	log.Printf("本次支付流量：%sMB", newSize)
-	var sizes int64
-	mutxDB.Lock()
+	mutexDB.Lock()
+	defer mutexDB.Unlock()
+
 	key := []byte(voucherSign.Creator + strconv.FormatUint(voucherSign.VidoId, 10))
-	data, errGet := db.Get(key, nil)
-	mutxDB.Unlock()
-
-	if errGet == errors.ErrNotFound {
-		sizes = 0
-		log.Printf("用户当前余额是0MB")
-	} else {
-		if errUnmarshal := json.Unmarshal(data, &sizes); errUnmarshal != nil {
-			fmt.Println("errUnmarshal:", errUnmarshal)
-			sendErrorResponse(rw, models.ErrorInternalFaults)
+	value, errGet := db.Get(key, nil)
+	if errGet != nil {
+		if errGet == errors.ErrNotFound {
+			value = []byte("0")
+		} else {
+			sendErrorResponse(rw, models.ErrorInsufficientBalance)
+			return
 		}
-		_, str := formatFileSize(sizes)
-		log.Printf("用户当前余额是%sMB", str)
 	}
 
-	sizes = sizes + int64(newSize)
-	fmt.Printf("size:", sizes)
-	value, errMarshal := json.Marshal(sizes)
-	fmt.Println("value:", value)
-	if errMarshal != nil {
-		fmt.Println("errMarshal:", errMarshal)
-		sendErrorResponse(rw, models.ErrorInternalFaults)
+	size, _ := strconv.ParseInt(string(value), 10, 64)
+	newSize := size + int64(voucherData.ReceivedSizeMB*1024*1024)
+	if err := db.Put(key, []byte(strconv.Itoa(int(newSize))), nil); err != nil {
+		sendErrorResponse(rw, models.ErrorInsufficientBalance)
+		return
 	}
-	mutxDB.Lock()
-	if errPut := db.Put(key, value, nil); errPut != nil {
-		fmt.Println("errPut:", errPut)
-		sendErrorResponse(rw, models.ErrorDBError)
-	}
-	_, strPay := formatFileSize(sizes)
-	mutxDB.Unlock()
-	log.Printf("用户支付后的余额是%sMB", strPay)
+	log.Printf("该用户在支付凭证前为%s,之后余量为：%s", formatFileSize(size), formatFileSize(newSize))
 
 	msg, errSubmit := makeSubmitPaysign(voucherSign.Creator, paySign, payData)
 	if errSubmit != nil {
@@ -333,10 +307,10 @@ func (v *VideoController) SendVoucher() {
 	if err := mQueue.Publish("sendTx", msg); err != nil {
 		fmt.Println("mq publish error:", err.Error())
 		sendErrorResponse(rw, models.ErrorInternalFaults)
+		return
 	}
 
 	sendNormalResponse(rw, models.SuccessSignRequest, 201)
-
 }
 
 func (v *VideoController) Settlement() {
@@ -511,6 +485,10 @@ func getPrivKey(addr string) (cryptotypes.PrivKey, error) {
 }
 
 func parsePayData(payData string, privateKey string) (*models.VoucherPayData, error) {
+	// return &models.VoucherPayData{ // TODO
+	// 	ReceivedSizeMB: 50,
+	// }, nil
+
 	voucherData := &models.VoucherPayData{}
 	decrptData := dongle.Decrypt.FromBase64String(payData).ByRsa(privateKey).ToString()
 	if err := json.Unmarshal([]byte(decrptData), voucherData); err != nil {
@@ -545,7 +523,7 @@ func parsePaySign(ctx sdk.Context, paySignStr string) (*cosTypes.MsgPaySign, err
 	txConfig := tx.NewTxConfig(protoCodec, tx.DefaultSignModes)
 
 	// txBytes, err := base64.StdEncoding.DecodeString(paySignStr)
-	txBytes, err := hex.DecodeString(paySignStr)
+	txBytes, err := hex.DecodeString(paySignStr) // TODO
 
 	// txBytes, err := hex.DecodeString(paySignStr)
 	if err != nil {
@@ -563,25 +541,29 @@ func parsePaySign(ctx sdk.Context, paySignStr string) (*cosTypes.MsgPaySign, err
 	return msgs[0].(*cosTypes.MsgPaySign), nil
 }
 
-func formatFileSize(fileSize int64) (size float64, sizstr string) {
+func formatFileSize(fileSize int64) (sizstr string) {
 	var str string
-	if fileSize < 1024 || fileSize > -1024 {
-		str = fmt.Sprintf("%.2fB", float64(fileSize)/float64(1))
-		return float64(fileSize) / float64(1), str
-	} else if fileSize < (1024*1024) || fileSize > -(1024*1024) {
-		str = fmt.Sprintf("%.2fKB", float64(fileSize)/float64(1024))
-		return float64(fileSize) / float64(1024), str
-	} else if fileSize < (1024*1024*1024) || fileSize > -(1024*1024*1024) {
-		str = fmt.Sprintf("%.2fMB", float64(fileSize)/float64(1024*1024))
-		return float64(fileSize) / float64(1024*1024), str
-	} else if fileSize < (1024*1024*1024*1024) || fileSize > -(1024*1024*1024*1024) {
-		str = fmt.Sprintf("%.2fGB", float64(fileSize)/float64(1024*1024*1024))
-		return float64(fileSize) / float64(1024*1024*1024), str
-	} else if fileSize < (1024*1024*1024*1024*1024) || fileSize > -(1024*1024*1024*1024*1024) {
-		str = fmt.Sprintf("%.2fTB", float64(fileSize)/float64(1024*1024*1024*1024))
-		return float64(fileSize) / float64(1024*1024*1024*1024), str
-	} else { //if fileSize < (1024 * 1024 * 1024 * 1024 * 1024 * 1024)
-		str = fmt.Sprintf("%.2fEB", float64(fileSize)/float64(1024*1024*1024*1024*1024))
-		return float64(fileSize) / float64(1024*1024*1024*1024*1024), str
+	isNegNum := false
+	if fileSize < 0 {
+		isNegNum = true
+		fileSize = -fileSize
 	}
+
+	if fileSize < 1024 {
+		str = fmt.Sprintf("%.2fB", float64(fileSize)/float64(1))
+	} else if fileSize < (1024 * 1024) {
+		str = fmt.Sprintf("%.2fKB", float64(fileSize)/float64(1024))
+	} else if fileSize < (1024 * 1024 * 1024) {
+		str = fmt.Sprintf("%.2fMB", float64(fileSize)/float64(1024*1024))
+	} else if fileSize < (1024 * 1024 * 1024 * 1024) {
+		str = fmt.Sprintf("%.2fGB", float64(fileSize)/float64(1024*1024*1024))
+	} else if fileSize < (1024 * 1024 * 1024 * 1024 * 1024) {
+		str = fmt.Sprintf("%.2fTB", float64(fileSize)/float64(1024*1024*1024*1024))
+	} else {
+		str = fmt.Sprintf("%.2fEB", float64(fileSize)/float64(1024*1024*1024*1024*1024))
+	}
+	if isNegNum {
+		str = "-" + str
+	}
+	return str
 }

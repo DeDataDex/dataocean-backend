@@ -11,9 +11,11 @@ import (
 
 	"dataoceanbackend/models"
 	"dataoceanbackend/mq"
+
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/go-resty/resty/v2"
 	beego "github.com/stonemeta/beego/server/web"
+
 	// "github.com/cosmos/cosmos-sdk/codec"
 	// codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	// "github.com/cosmos/cosmos-sdk/std"
@@ -45,7 +47,8 @@ var contentTypeMap = map[string]string{
 	"mpv2":  "video/mpeg",
 	"wmv":   "video/x-ms-wmv",
 	"wmx":   "video/x-ms-wmx",
-	"ts":    "video/vnd.dlna.mpeg-tts",
+	"ts":    "video/MP2T",
+	"m3u8":  "application/x-mpegURL",
 }
 var mQueue *mq.Client
 var db *leveldb.DB
