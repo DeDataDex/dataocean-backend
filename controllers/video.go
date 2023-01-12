@@ -36,7 +36,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/errors"
 )
 
-var minerPri = "cosmos1pt9w3gac7dm57wlsfy43ms54858evr5hmslfz5"
+//var minerPri = "cosmos1jql5xaqych6sw57qngcdapvuaj7wk2ycnctxme"
 
 // Operations about Users
 type VideoController struct {
@@ -299,8 +299,8 @@ func (v *VideoController) SendVoucher() {
 		return
 	}
 	log.Printf("该用户在支付凭证前为%s,之后余量为：%s", formatFileSize(size), formatFileSize(newSize))
-
-	msg, errSubmit := makeSubmitPaysign(minerPri, paySign, payData)
+	minerAccount, _ := beego.AppConfig.String("minerAccount")
+	msg, errSubmit := makeSubmitPaysign(minerAccount, paySign, payData)
 	if errSubmit != nil {
 		fmt.Println("errSumit:", errSubmit)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
@@ -339,6 +339,7 @@ func makeSubmitPaysign(creator string, paySign string, payData string) ([]byte, 
 	var accountNumber uint64
 	var sequence uint64
 	priv, err := getPrivKey(creator)
+
 	if err != nil {
 		fmt.Println(err.Error())
 		return nil, err

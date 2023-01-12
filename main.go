@@ -16,6 +16,7 @@ func main() {
 		remoteAddress := flag.String("chainApi", "127.0.0.1:1317", "rigister server in a application blockchain")
 		dataDir := flag.String("fileDir", "./temp", "File Save Path")
 		threshold := flag.String("threshold", "-200", "set judge threshold")
+		minerAccount := flag.String("minerAccount", "", "miner chain account address")
 
 		key := flag.String("aesKey", "key_for_server_1", "set aeskey of every miner")
 
@@ -25,6 +26,7 @@ func main() {
 		fmt.Println("remoteAddress:", *remoteAddress)
 		beego.AppConfig.Set("FileDir", *dataDir)
 		beego.AppConfig.Set("threshold", *threshold)
+		beego.AppConfig.Set("minerAccount", *minerAccount)
 	}
 
 	cors.Allow(&cors.Options{
