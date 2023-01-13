@@ -36,11 +36,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/errors"
 )
 
-<<<<<<< HEAD
-//var minerPri = "cosmos1jql5xaqych6sw57qngcdapvuaj7wk2ycnctxme"
-=======
 var minerPri = "cosmos130zz6nw2y3yppne9agpj09h8dem2hej8500lq9"
->>>>>>> 70d06683482d5c78a0d6811143931736808a9849
 
 // Operations about Users
 type VideoController struct {
@@ -343,11 +339,7 @@ func makeSubmitPaysign(creator string, paySign string, payData string) ([]byte, 
 	var accountNumber uint64
 	var sequence uint64
 	priv, err := getPrivKey(creator)
-<<<<<<< HEAD
-
-=======
 	fmt.Println("priv:", priv.String())
->>>>>>> 70d06683482d5c78a0d6811143931736808a9849
 	if err != nil {
 		fmt.Println(err.Error())
 		return nil, err
