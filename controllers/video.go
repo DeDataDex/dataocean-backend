@@ -337,7 +337,6 @@ func makeSubmitPaysign(creator string, paySign string, payData string) ([]byte, 
 	var accountNumber uint64
 	var sequence uint64
 	priv, err := getPrivKey(creator)
-	fmt.Println("priv:", priv.String())
 	if err != nil {
 		fmt.Println(err.Error())
 		return nil, err

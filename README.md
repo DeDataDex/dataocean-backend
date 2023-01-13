@@ -9,7 +9,7 @@ To build miner, you need a working installation of Go
 1.Clone the repository:
 
 ```shell
-git clone https://dataocean-backend.git
+git clone https://github.com/DeDataDex/dataocean-backend.git
 cd dataocean-backend/
 ```
 
@@ -17,12 +17,16 @@ cd dataocean-backend/
 
 ```shell
 go build
-#在dataocean文件夹下会生成 `dataoceanbackend` 可执行文件
 ```
+
+在当前文件夹下会生成 `dataoceanbackend` 可执行文件
 
 ### Start and run miner
 
 ```shell
 ./dataoceanbackend --minerAccount=cosmosxxxxxx --chainApi=xxxxx  --fileDir=xxxxx  --threshold=xxxxx  --aesKey=xxxxx
 
+# or simply
+
+./dataoceanbackend --minerAccount=cosmosxxxxxx
 ```
