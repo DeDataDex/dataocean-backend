@@ -36,8 +36,6 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/errors"
 )
 
-var minerPri = "cosmos130zz6nw2y3yppne9agpj09h8dem2hej8500lq9"
-
 // Operations about Users
 type VideoController struct {
 	beego.Controller
