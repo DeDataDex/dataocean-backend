@@ -66,8 +66,8 @@ type Publickey struct {
 }
 
 type VoucherPayData struct {
-	ReceivedSizeMB uint64 `json:"receivedSizeMB"`
-	Timestamp      uint64 `json:"timestamp"`
+	ReceivedSizeMB float64 `json:"receivedSizeMB"`
+	Timestamp      uint64  `json:"timestamp"`
 }
 
 type VoucherPaySign struct {
