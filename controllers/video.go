@@ -410,7 +410,7 @@ func makeSubmitPaysign(creator string, paySign string, payData string) ([]byte, 
 		fmt.Println(err)
 		return []byte{}, err
 	}
-	fmt.Println(string(txJSONBytes))
+	// fmt.Println(string(txJSONBytes))
 
 	txBytes, err := txConfig.TxEncoder()(txBuilder.GetTx())
 	if err != nil {
@@ -418,7 +418,7 @@ func makeSubmitPaysign(creator string, paySign string, payData string) ([]byte, 
 		return []byte{}, err
 	}
 	txBytesBase64 := base64.StdEncoding.EncodeToString(txBytes)
-	fmt.Println(string(txBytesBase64))
+	// fmt.Println(string(txBytesBase64))
 
 	return []byte(txBytesBase64), nil
 }

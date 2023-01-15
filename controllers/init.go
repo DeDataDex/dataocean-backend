@@ -109,7 +109,7 @@ func sendSettleMsg(ctx sdk.Context, val []byte) {
 	}
 	client := resty.New()
 
-	fmt.Println("sendSettleMsg:", string(val))
+	// fmt.Println("sendSettleMsg:", string(val))
 	var i int
 	for i = 0; i < 5; i++ {
 		result := struct {
@@ -118,7 +118,7 @@ func sendSettleMsg(ctx sdk.Context, val []byte) {
 				RawLog string `json:"raw_log"`
 			} `json:"tx_response"`
 		}{}
-		resp, err := client.R().
+		_, err := client.R().
 			SetHeader("Content-Type", "application/json").
 			SetBody(map[string]string{
 				"tx_bytes": string(val),
@@ -131,8 +131,8 @@ func sendSettleMsg(ctx sdk.Context, val []byte) {
 			time.Sleep(time.Second)
 			continue
 		}
-		fmt.Printf("sendSettleMsg ret: code=%d rawlog=%s resp=%s", result.TxResponse.Code, result.TxResponse.RawLog, resp.String())
-
+		fmt.Printf("sendSettleMsg ret: code=%d rawlog=%s\n", result.TxResponse.Code, result.TxResponse.RawLog)
+		// fmt.Printf("sendSettleMsg ret: code=%d rawlog=%s resp=%s", result.TxResponse.Code, result.TxResponse.RawLog, resp.String())
 		break
 	}
 	if i >= 5 {
