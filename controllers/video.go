@@ -274,7 +274,7 @@ func (v *VideoController) SendVoucher() {
 		fmt.Println("errParsePayData", errParsePayData)
 		sendErrorResponse(rw, models.ErrorInternalFaults)
 	}
-	fmt.Println("voucherData:", voucherData.ReceivedSizeMB, voucherData.Timestamp)
+	fmt.Println("voucherData:", voucherData.ReceivedSize, voucherData.Timestamp)
 
 	mutexDB.Lock()
 	defer mutexDB.Unlock()
@@ -291,7 +291,7 @@ func (v *VideoController) SendVoucher() {
 	}
 
 	size, _ := strconv.ParseInt(string(value), 10, 64)
-	newSize := size + int64(voucherData.ReceivedSizeMB*1024*1024)
+	newSize := size + int64(voucherData.ReceivedSize)
 	if err := db.Put(key, []byte(strconv.Itoa(int(newSize))), nil); err != nil {
 		sendErrorResponse(rw, models.ErrorInsufficientBalance)
 		return
@@ -487,7 +487,7 @@ func getPrivKey(addr string) (cryptotypes.PrivKey, error) {
 
 func parsePayData(payData string, privateKey string) (*models.VoucherPayData, error) {
 	// return &models.VoucherPayData{ // TODO
-	// 	ReceivedSizeMB: 50,
+	// 	ReceivedSize: 50,
 	// }, nil
 
 	voucherData := &models.VoucherPayData{}
